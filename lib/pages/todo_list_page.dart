@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lista_tarefas/models/tarefa.dart';
 import 'package:lista_tarefas/widgets/todo_list_item.dart';
+import 'package:lista_tarefas/helpers/database_helper.dart';
 
 class TodoListPage extends StatefulWidget {
   const TodoListPage({super.key});
@@ -11,8 +12,39 @@ class TodoListPage extends StatefulWidget {
 
 class _TodoListPageState extends State<TodoListPage> {
   List<Tarefa> tarefas = [];
-
   final TextEditingController todoController = TextEditingController();
+  final DatabaseHelper _dbHelper = DatabaseHelper();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTarefas();
+  }
+
+  Future<void> _loadTarefas() async {
+    final tarefasFromDb = await _dbHelper.getTarefas();
+    setState(() {
+      tarefas = tarefasFromDb;
+    });
+  }
+
+  Future<void> _addTarefa(String title) async {
+    Tarefa novaTarefa = Tarefa(title: title, dateTime: DateTime.now());
+    await _dbHelper.insertTarefa(novaTarefa);
+    _loadTarefas();
+  }
+
+  Future<void> _removeTarefa(Tarefa tarefa) async {
+    if (tarefa.id != null) {
+      await _dbHelper.deleteTarefa(tarefa.id!);
+      _loadTarefas();
+    }
+  }
+
+  Future<void> _clearTarefas() async {
+    await _dbHelper.clearTarefas();
+    _loadTarefas();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,35 +67,28 @@ class _TodoListPageState extends State<TodoListPage> {
                         ),
                       ),
                     ),
-                    const SizedBox(
-                      width: 8,
-                    ),
+                    const SizedBox(width: 8),
                     ElevatedButton(
                       onPressed: () {
                         String text = todoController.text;
                         if (text.isNotEmpty) {
-                          setState(() {
-                            Tarefa novaTarefa = Tarefa(
-                              title: text,
-                              dateTime: DateTime.now(),
-                            );
-                            tarefas.add(novaTarefa);
-                            todoController.clear();
-                          });
+                          _addTarefa(text);
+                          todoController.clear();
                         }
                       },
                       style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xff00d7f3),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                          padding: const EdgeInsets.all(16)),
+                        backgroundColor: const Color(0xff00d7f3),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        padding: const EdgeInsets.all(16),
+                      ),
                       child: const Icon(
                         Icons.add,
                         size: 30,
                         color: Colors.white,
                       ),
-                    )
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -76,17 +101,41 @@ class _TodoListPageState extends State<TodoListPage> {
                           key: Key(tarefa.title),
                           direction: DismissDirection.startToEnd,
                           onDismissed: (direction) {
+                            Tarefa tarefaRemovida = tarefa;
+                            int tarefaIndex = tarefas.indexOf(tarefa);
+
+                            // Remove a tarefa da lista
                             setState(() {
-                              tarefas.remove(tarefa);
+                              tarefas.removeAt(tarefaIndex);
                             });
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'Tarefa "${tarefa.title}" removida',
-                                ),
-                                duration: const Duration(seconds: 2),
-                              ),
-                            );
+
+                            // Exibe o SnackBar com a opção de desfazer
+                            ScaffoldMessenger.of(context)
+                                .showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                        'Tarefa "${tarefaRemovida.title}" removida'),
+                                    action: SnackBarAction(
+                                      label: 'Desfazer',
+                                      onPressed: () {
+                                        // Desfazer a remoção da tarefa
+                                        setState(() {
+                                          tarefas.insert(
+                                              tarefaIndex, tarefaRemovida);
+                                        });
+                                      },
+                                    ),
+                                    duration: const Duration(seconds: 5),
+                                  ),
+                                )
+                                .closed
+                                .then((reason) {
+                              // Se o usuário não clicou em "Desfazer", persiste a exclusão no banco de dados
+                              if (reason != SnackBarClosedReason.action) {
+                                // Chamar função para excluir a tarefa do banco de dados
+                                _removeTarefa(tarefaRemovida);
+                              }
+                            });
                           },
                           background: Container(
                             color: Colors.red,
@@ -117,28 +166,21 @@ class _TodoListPageState extends State<TodoListPage> {
                         'Você possui ${tarefas.length} tarefas pendentes',
                       ),
                     ),
-                    const SizedBox(
-                      width: 8,
-                    ),
+                    const SizedBox(width: 8),
                     ElevatedButton(
-                      onPressed: tarefas.isEmpty
-                          ? null
-                          : () {
-                              setState(() {
-                                tarefas.clear();
-                              });
-                            },
+                      onPressed: tarefas.isEmpty ? null : _clearTarefas,
                       style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xff00d7f3),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                          padding: const EdgeInsets.all(16)),
+                        backgroundColor: const Color(0xff00d7f3),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        padding: const EdgeInsets.all(16),
+                      ),
                       child: const Text(
                         'Limpar tudo',
                         style: TextStyle(color: Colors.white, fontSize: 20),
                       ),
-                    )
+                    ),
                   ],
                 ),
               ],
