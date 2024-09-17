@@ -20,6 +20,7 @@ class DatabaseHelper {
 
   Future<Database> _initDatabase() async {
     String path = join(await getDatabasesPath(), 'todo_list.db');
+    print(path);
     return await openDatabase(
       path,
       version: 1,
